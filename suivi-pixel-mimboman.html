@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrouver mon Pixel – Mimboman, Yaoundé</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --fond: #eef2f6;
+    --encre: #14263a;
+    --encre-douce: #51657a;
+    --trait: #cfd9e3;
+    --moi: #1f6feb;
+    --pixel: #d6246e;
+    --ok: #168a4a;
+    --surface: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fond: #121c27;
+      --encre: #e8eff6;
+      --encre-douce: #9bb0c4;
+      --trait: #2b3a4a;
+      --surface: #1a2634;
+      --moi: #5b9bff;
+      --pixel: #ff5c9a;
+      --ok: #3ccf82;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    background: var(--fond);
+    color: var(--encre);
+    display: flex;
+    flex-direction: column;
+  }
+  #carte { flex: 1; min-height: 0; z-index: 0; }
+
+  .panneau {
+    background: var(--surface);
+    border-top: 1px solid var(--trait);
+    padding: 14px 16px 16px;
+    z-index: 2;
+  }
+  .ligne-haut { display: flex; align-items: center; gap: 14px; }
+  .fleche {
+    width: 54px; height: 54px; flex: none;
+    border-radius: 50%;
+    border: 1px solid var(--trait);
+    display: grid; place-items: center;
+    background: var(--fond);
+  }
+  .fleche svg { width: 30px; height: 30px; transition: transform .4s ease; }
+  .distance { font-size: 2rem; font-weight: 700; line-height: 1.05; letter-spacing: -0.01em; }
+  .detail { color: var(--encre-douce); font-size: .95rem; margin-top: 2px; }
+  .etat {
+    margin-left: auto; text-align: right; font-size: .85rem; color: var(--encre-douce);
+    max-width: 38%;
+  }
+  .etat b { color: var(--encre); display: block; font-size: .95rem; }
+  .proche .distance { color: var(--ok); }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button {
+    font: inherit; font-size: .92rem;
+    padding: 9px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--trait);
+    background: var(--surface);
+    color: var(--encre);
+    cursor: pointer;
+  }
+  button.principal { background: var(--moi); border-color: var(--moi); color: #fff; }
+  button[aria-pressed="true"] { border-color: var(--pixel); color: var(--pixel); }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--moi); outline-offset: 2px; }
+
+  .coord { display: none; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: end; }
+  .coord.ouvert { display: flex; }
+  .coord label { font-size: .8rem; color: var(--encre-douce); display: grid; gap: 3px; }
+  .coord input {
+    font: inherit; width: 130px; padding: 8px;
+    border: 1px solid var(--trait); border-radius: 8px;
+    background: var(--fond); color: var(--encre);
+  }
+  .note { font-size: .8rem; color: var(--encre-douce); margin-top: 10px; line-height: 1.4; }
+
+  .pastille {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0,0,0,.25);
+  }
+  .pastille.moi { background: var(--moi); }
+  .pastille.pixel { background: var(--pixel); position: relative; }
+  .pastille.pixel::after {
+    content: ""; position: absolute; inset: -12px; border-radius: 50%;
+    border: 2px solid var(--pixel); opacity: 0;
+    animation: onde 2.2s ease-out infinite;
+  }
+  @keyframes onde { 0% { transform: scale(.4); opacity: .8; } 100% { transform: scale(1.3); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pastille.pixel::after { animation: none; opacity: .5; }
+    .fleche svg { transition: none; }
+  }
+  @media (min-width: 820px) {
+    body { flex-direction: row; }
+    .panneau { width: 380px; border-top: 0; border-right: 1px solid var(--trait); order: -1; overflow: auto; }
+    .etat { max-width: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="carte" role="application" aria-label="Carte de Yaoundé"></div>
+
+<section class="panneau" id="panneau" aria-live="polite">
+  <div class="ligne-haut">
+    <div class="fleche" aria-hidden="true">
+      <svg id="fleche" viewBox="0 0 24 24" fill="var(--pixel)"><path d="M12 2 20 21 12 17 4 21z"/></svg>
+    </div>
+    <div>
+      <div class="distance" id="distance">—</div>
+      <div class="detail" id="detail">En attente de votre position…</div>
+    </div>
+    <div class="etat"><b id="etatTitre">Pixel</b><span id="etatTexte">Mimboman, Yaoundé</span></div>
+  </div>
+
+  <div class="actions">
+    <button class="principal" id="btnGps">Activer ma position</button>
+    <button id="btnCentre">Voir les deux</button>
+    <button id="btnPlacer" aria-pressed="false">Déplacer le Pixel</button>
+    <button id="btnDemo">Simuler une marche</button>
+  </div>
+
+  <div class="coord" id="coord">
+    <label>Latitude du Pixel<input id="lat" inputmode="decimal"></label>
+    <label>Longitude du Pixel<input id="lng" inputmode="decimal"></label>
+    <button id="btnAppliquer">Appliquer</button>
+  </div>
+
+  <p class="note">
+    Le Pixel est placé à Mimboman. Pour une position réelle, ouvrez Google Find Hub (Localiser mon appareil)
+    et recopiez les coordonnées ici, ou touchez la carte après avoir appuyé sur « Déplacer le Pixel ».
+  </p>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function () {
+  // Mimboman, Yaoundé (position approximative du quartier)
+  var PIXEL_DEFAUT = [3.8667, 11.5333];
+
+  var carte = L.map('carte', { zoomControl: true }).setView(PIXEL_DEFAUT, 16);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© Contributeurs OpenStreetMap'
+  }).addTo(carte);
+
+  function icone(classe) {
+    return L.divIcon({ className: '', html: '<div class="pastille ' + classe + '"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+  }
+
+  var pixel = L.marker(PIXEL_DEFAUT, { icon: icone('pixel'), draggable: true, title: 'Pixel' }).addTo(carte);
+  pixel.bindTooltip('Mon Pixel', { direction: 'top', offset: [0, -12] });
+  var moi = null, precision = null;
+  var ligne = L.polyline([], { color: '#1f6feb', weight: 4, dashArray: '8 8' }).addTo(carte);
+
+  var el = {
+    distance: document.getElementById('distance'),
+    detail: document.getElementById('detail'),
+    fleche: document.getElementById('fleche'),
+    panneau: document.getElementById('panneau'),
+    etatTitre: document.getElementById('etatTitre'),
+    etatTexte: document.getElementById('etatTexte'),
+    lat: document.getElementById('lat'),
+    lng: document.getElementById('lng'),
+    coord: document.getElementById('coord'),
+    btnPlacer: document.getElementById('btnPlacer')
+  };
+
+  var positionMoi = null;
+  var watchId = null;
+  var demoTimer = null;
+  var premierCentrage = true;
+  var modePlacer = false;
+
+  function rad(d) { return d * Math.PI / 180; }
+  function deg(r) { return r * 180 / Math.PI; }
+
+  function distanceM(a, b) {
+    var R = 6371000;
+    var dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function cap(a, b) {
+    var y = Math.sin(rad(b[1] - a[1])) * Math.cos(rad(b[0]));
+    var x = Math.cos(rad(a[0])) * Math.sin(rad(b[0])) -
+            Math.sin(rad(a[0])) * Math.cos(rad(b[0])) * Math.cos(rad(b[1] - a[1]));
+    return (deg(Math.atan2(y, x)) + 360) % 360;
+  }
+  function pointCardinal(c) {
+    var n = ['nord', 'nord-est', 'est', 'sud-est', 'sud', 'sud-ouest', 'ouest', 'nord-ouest'];
+    return n[Math.round(c / 45) % 8];
+  }
+  function formatDistance(m) {
+    return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(2).replace('.', ',') + ' km';
+  }
+
+  function majAffichage() {
+    var p = pixel.getLatLng();
+    var cibleP = [p.lat, p.lng];
+    el.lat.value = p.lat.toFixed(6);
+    el.lng.value = p.lng.toFixed(6);
+
+    if (!positionMoi) {
+      ligne.setLatLngs([]);
+      return;
+    }
+    var d = distanceM(positionMoi, cibleP);
+    var c = cap(positionMoi, cibleP);
+
+    ligne.setLatLngs([positionMoi, cibleP]);
+    el.distance.textContent = d < 15 ? 'Vous y êtes' : formatDistance(d);
+    var minutes = Math.max(1, Math.round(d / 80)); // ~ 4,8 km/h
+    el.detail.textContent = d < 15
+      ? 'Le Pixel est tout près, regardez autour de vous.'
+      : 'Direction ' + pointCardinal(c) + ' · environ ' + minutes + ' min à pied';
+    el.fleche.style.transform = 'rotate(' + c + 'deg)';
+    el.panneau.classList.toggle('proche', d < 30);
+  }
+
+  function definirMoi(lat, lng, prec) {
+    positionMoi = [lat, lng];
+    if (!moi) {
+      moi = L.marker(positionMoi, { icon: icone('moi'), title: 'Vous' }).addTo(carte);
+      moi.bindTooltip('Vous', { direction: 'top', offset: [0, -12] });
+      precision = L.circle(positionMoi, { radius: prec || 20, color: '#1f6feb', weight: 1, fillOpacity: .08 }).addTo(carte);
+    } else {
+      moi.setLatLng(positionMoi);
+      precision.setLatLng(positionMoi);
+      if (prec) precision.setRadius(prec);
+    }
+    if (premierCentrage) { premierCentrage = false; voirLesDeux(); }
+    majAffichage();
+  }
+
+  function voirLesDeux() {
+    var pts = [pixel.getLatLng()];
+    if (positionMoi) pts.push(L.latLng(positionMoi));
+    if (pts.length === 1) carte.setView(pts[0], 16);
+    else carte.fitBounds(L.latLngBounds(pts), { padding: [60, 60], maxZoom: 18 });
+  }
+
+  // --- Position réelle (mise à jour instantanée) ---
+  function demarrerGps() {
+    arreterDemo();
+    if (!navigator.geolocation) {
+      el.detail.textContent = 'La géolocalisation n’est pas disponible sur cet appareil.';
+      return;
+    }
+    if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+    el.detail.textContent = 'Recherche de votre position…';
+    watchId = navigator.geolocation.watchPosition(function (pos) {
+      definirMoi(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+    }, function (err) {
+      el.detail.textContent = err.code === 1
+        ? 'Accès à la position refusé. Autorisez-le dans les réglages du navigateur, ou essayez la simulation.'
+        : 'Position introuvable. Sortez à l’air libre ou essayez la simulation.';
+    }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
+  }
+
+  // --- Simulation : une marche vers le Pixel ---
+  function arreterDemo() { if (demoTimer) { clearInterval(demoTimer); demoTimer = null; } }
+  function lancerDemo() {
+    if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    arreterDemo();
+    var p = pixel.getLatLng();
+    var lat = p.lat + 0.006, lng = p.lng - 0.005; // environ 800 m
+    premierCentrage = true;
+    demoTimer = setInterval(function () {
+      lat += (p.lat - lat) * 0.06;
+      lng += (p.lng - lng) * 0.06;
+      definirMoi(lat, lng, 12);
+      if (distanceM([lat, lng], [p.lat, p.lng]) < 8) arreterDemo();
+    }, 700);
+  }
+
+  // --- Placement du Pixel ---
+  function basculerPlacer(actif) {
+    modePlacer = actif;
+    el.btnPlacer.setAttribute('aria-pressed', String(actif));
+    el.coord.classList.toggle('ouvert', actif);
+    el.btnPlacer.textContent = actif ? 'Terminer' : 'Déplacer le Pixel';
+    document.getElementById('carte').style.cursor = actif ? 'crosshair' : '';
+  }
+  carte.on('click', function (e) {
+    if (!modePlacer) return;
+    pixel.setLatLng(e.latlng);
+    majAffichage();
+  });
+  pixel.on('drag', majAffichage);
+
+  document.getElementById('btnGps').addEventListener('click', demarrerGps);
+  document.getElementById('btnCentre').addEventListener('click', voirLesDeux);
+  document.getElementById('btnDemo').addEventListener('click', lancerDemo);
+  el.btnPlacer.addEventListener('click', function () { basculerPlacer(!modePlacer); });
+  document.getElementById('btnAppliquer').addEventListener('click', function () {
+    var la = parseFloat(el.lat.value.replace(',', '.')), lo = parseFloat(el.lng.value.replace(',', '.'));
+    if (isNaN(la) || isNaN(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) {
+      el.detail.textContent = 'Coordonnées invalides. Exemple : 3,8667 et 11,5333.';
+      return;
+    }
+    pixel.setLatLng([la, lo]);
+    carte.panTo([la, lo]);
+    majAffichage();
+  });
+
+  majAffichage();
+})();
+</script>
+</body>
+</html>
